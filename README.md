@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PV Analyzer - PDF Analysis Tool
 
-## Getting Started
+A Next.js application that analyzes HOA (Home Owners Association) meeting minutes in PDF format using AI.
 
-First, run the development server:
+## Current Issue: pdf-parse Integration
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+We're currently experiencing an issue with the `pdf-parse` package in our PDF analysis pipeline. The package is attempting to access a test file (`./test/data/05-versions-space.pdf`) regardless of the actual PDF path provided.
+
+### Error Details
+```
+Error: ENOENT: no such file or directory, open './test/data/05-versions-space.pdf'
+at analyzePDFWithMistral (app/api/analysis/route.ts:109:10)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Technical Environment
+- Next.js 15.2.1 with Turbopack
+- Node.js (recommended: 18.x or higher)
+- TypeScript
+- pdf-parse (latest version)
+- Mistral AI for text analysis
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Current Implementation
+The PDF analysis flow:
+1. User uploads PDF to `/upload`
+2. File is saved in `tmp/uploads/`
+3. Analysis endpoint (`/api/analysis`) attempts to process the PDF
+4. `pdf-parse` fails by trying to access its test file instead of the uploaded PDF
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Attempted Solutions
+1. Moved `pdf-parse` import inside the function scope
+2. Verified PDF file existence in uploads directory
+3. Confirmed correct file paths
+4. Checked file permissions
 
-## Learn More
+### Setup Instructions
 
-To learn more about Next.js, take a look at the following resources:
+1. Clone and install dependencies:
+```bash
+git clone [repository-url]
+cd pv-analyzer
+npm install
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+2. Create `.env.local` file:
+```bash
+cp .env.example .env.local
+# Add your Mistral API key
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+3. Run development server:
+```bash
+npm run dev
+```
 
-## Deploy on Vercel
+4. Access the application:
+- Main page: http://localhost:3000
+- Upload page: http://localhost:3000/upload
+- Analysis page: http://localhost:3000/analysis
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Project Structure
+```
+pv-analyzer/
+├── app/
+│   ├── api/
+│   │   ├── analysis/
+│   │   │   └── route.ts    # PDF analysis endpoint
+│   │   └── upload/
+│   │       └── route.ts    # File upload endpoint
+│   ├── components/
+│   └── ...
+├── tmp/
+│   └── uploads/           # Temporary PDF storage
+└── ...
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Looking For Help With
+- Understanding why `pdf-parse` ignores the provided file path
+- Finding a solution to properly initialize `pdf-parse` without accessing test files
+- Implementing a robust PDF parsing solution in a Next.js API route
+
+## License
+Proprietary. All rights reserved.
