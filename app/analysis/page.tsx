@@ -3,15 +3,12 @@
 import { useEffect, useState } from 'react';
 import Header from '../components/Header';
 
-interface BudgetAnalysis {
+interface AnalysisData {
   montant: string;
   annee: string;
   resultatVote: string;
   numeroClause: string;
-}
-
-interface AnalysisData {
-  budget: BudgetAnalysis;
+  estAdopte: boolean;
 }
 
 export default function AnalysisPage() {
@@ -71,22 +68,29 @@ export default function AnalysisPage() {
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h3 className="text-lg font-medium text-gray-900 mb-2">Montant du budget</h3>
-                  <p className="text-2xl font-bold text-blue-600">{analysis.budget.montant}</p>
+                  <p className="text-2xl font-bold text-blue-600">{analysis.montant}</p>
                 </div>
 
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h3 className="text-lg font-medium text-gray-900 mb-2">Année concernée</h3>
-                  <p className="text-2xl font-bold text-blue-600">{analysis.budget.annee}</p>
+                  <p className="text-2xl font-bold text-blue-600">{analysis.annee}</p>
                 </div>
 
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h3 className="text-lg font-medium text-gray-900 mb-2">Résultat du vote</h3>
-                  <p className="text-2xl font-bold text-blue-600">{analysis.budget.resultatVote}</p>
+                  <p className="text-2xl font-bold text-blue-600">
+                    {analysis.resultatVote}
+                    {analysis.estAdopte !== undefined && (
+                      <span className={`ml-2 text-sm ${analysis.estAdopte ? 'text-green-600' : 'text-red-600'}`}>
+                        ({analysis.estAdopte ? 'Adoptée' : 'Rejetée'})
+                      </span>
+                    )}
+                  </p>
                 </div>
 
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h3 className="text-lg font-medium text-gray-900 mb-2">Référence</h3>
-                  <p className="text-2xl font-bold text-blue-600">{analysis.budget.numeroClause}</p>
+                  <p className="text-2xl font-bold text-blue-600">{analysis.numeroClause}</p>
                 </div>
               </div>
             </div>

@@ -2,35 +2,44 @@
 
 A Next.js application that analyzes HOA (Home Owners Association) meeting minutes in PDF format using AI.
 
-## Current Issue: pdf-parse Integration
+## Current Issues
 
-We're currently experiencing an issue with the `pdf-parse` package in our PDF analysis pipeline. The package is attempting to access a test file (`./test/data/05-versions-space.pdf`) regardless of the actual PDF path provided.
+### 1. Server Accessibility Problems
+- The development server shows as running but remains inaccessible (ERR_CONNECTION_REFUSED)
+- Attempted solutions:
+  - Tried different ports (3000, 3001, 3002)
+  - Disabled Turbopack
+  - Created custom Next.js configuration
+  - Attempted Express server implementation
+  - None of these solutions resolved the connection issue
 
-### Error Details
-```
-Error: ENOENT: no such file or directory, open './test/data/05-versions-space.pdf'
-at analyzePDFWithMistral (app/api/analysis/route.ts:109:10)
-```
+### 2. PDF Analysis Pipeline
+- Previous issues with `pdf-parse` led to attempts with `pdfjs-dist`
+- Current implementation switches back to `pdf-parse` for simplicity
+- Analysis results show caching issues:
+  - Same results appear despite different PDF uploads
+  - "Non trouvé" responses persist across different files
 
 ### Technical Environment
-- Next.js 15.2.1 with Turbopack
+- Next.js 15.2.1
 - Node.js (recommended: 18.x or higher)
 - TypeScript
 - pdf-parse (latest version)
 - Mistral AI for text analysis
 
-### Current Implementation
-The PDF analysis flow:
-1. User uploads PDF to `/upload`
-2. File is saved in `tmp/uploads/`
-3. Analysis endpoint (`/api/analysis`) attempts to process the PDF
-4. `pdf-parse` fails by trying to access its test file instead of the uploaded PDF
-
 ### Attempted Solutions
-1. Moved `pdf-parse` import inside the function scope
-2. Verified PDF file existence in uploads directory
-3. Confirmed correct file paths
-4. Checked file permissions
+1. Server Access:
+   - Tried multiple ports (3000, 3001, 3002)
+   - Created custom next.config.js
+   - Attempted Express server implementation
+   - Cleared .next cache and node_modules
+   - Reinstalled dependencies
+
+2. PDF Analysis:
+   - Switched between pdf-parse and pdfjs-dist
+   - Implemented file cleanup in uploads directory
+   - Added debug logging
+   - Modified worker configuration for PDF.js
 
 ### Setup Instructions
 
@@ -73,10 +82,16 @@ pv-analyzer/
 └── ...
 ```
 
-### Looking For Help With
-- Understanding why `pdf-parse` ignores the provided file path
-- Finding a solution to properly initialize `pdf-parse` without accessing test files
-- Implementing a robust PDF parsing solution in a Next.js API route
+### Next Steps for Investigation
+1. Server Access:
+   - Test with a completely fresh Next.js installation
+   - Investigate potential firewall or security settings
+   - Try running on a different machine to isolate environment issues
+
+2. PDF Analysis:
+   - Implement more robust caching controls
+   - Add comprehensive error logging
+   - Consider alternative PDF parsing libraries
 
 ## License
 Proprietary. All rights reserved.

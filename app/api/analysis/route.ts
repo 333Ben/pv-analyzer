@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
-import { Mistral } from '@mistralai/mistralai';
+import fs from 'fs';
+import pdf from 'pdf-parse';
 
 interface Section {
   numero: number;
@@ -9,32 +10,30 @@ interface Section {
   contenu: string[];
   votes: string[];
   montants: string[];
+  estAdopte?: boolean;
+  annee?: string;
 }
 
 // Configuration des patterns et mots-clés
 const CONFIG = {
   budgetKeywords: [
-    'budget',
-    'dépenses',
-    'exercice',
-    'euros',
-    '€',
+    'approbation du compte de dépenses',
+    'compte de dépenses',
+    'exercice comptable',
+    'montant de',
     'charges',
-    'comptable',
-    'prévisionnel',
-    'trésorerie',
-    'créances',
-    'dettes'
+    'dépenses de l\'exercice'
   ],
   patterns: {
     resolution: /^\s*(\d+)\s*[\.-]\s*([^\.]+)/m,
-    montant: /(\d[\d\s]*(?:,\d{2})?\s*(?:€|euros))/gi,
-    vote: /(?:POUR|CONTRE|ABST[ENTION]*)\s*:?\s*(\d+)[\s\/]*(\d+)\s*(?:cp|copropriétaires?|voix)/gi
+    montant: /(\d[\d\s]*(?:[.,]\d{2})?\s*(?:€|euros?)(?:\s*TTC)?)/gi,
+    vote: /POUR\s*(?::|=)?\s*(\d+)\s*\/\s*(\d+)\s*(?:cp|copropriétaires?|voix)/i,
+    annee: /(?:20\d{2})|(?:202[0-4])/,
+    adoption: /(?:la\s+résolution\s+est\s+adoptée)|(?:résolution\s+adoptée)/i,
+    rejet: /(?:la\s+résolution\s+est\s+rejetée)|(?:résolution\s+rejetée)/i,
+    exercice: /exercice\s*(?:du|de|pour)?\s*(\d{2}\/\d{2}\/\d{4})\s*au\s*(\d{2}\/\d{2}\/\d{4})/i
   }
 };
-
-// Initialize Mistral client
-const client = new Mistral({ apiKey: process.env.MISTRAL_API_KEY || '' });
 
 // Fonction de nettoyage du texte
 function cleanText(text: string): string {
@@ -73,14 +72,29 @@ function extractSections(text: string): Section[] {
       if (cleanedLine) {
         currentSection.contenu.push(cleanedLine);
         
+        // Chercher les montants
         const montants = line.match(CONFIG.patterns.montant);
         if (montants) {
           currentSection.montants.push(...montants);
         }
         
+        // Chercher les votes
         const votes = line.match(CONFIG.patterns.vote);
         if (votes) {
           currentSection.votes.push(cleanedLine);
+        }
+
+        // Chercher l'année
+        const anneeMatch = line.match(CONFIG.patterns.annee);
+        if (anneeMatch && !currentSection.annee) {
+          currentSection.annee = anneeMatch[0];
+        }
+
+        // Vérifier si la résolution est adoptée
+        if (CONFIG.patterns.adoption.test(line)) {
+          currentSection.estAdopte = true;
+        } else if (CONFIG.patterns.rejet.test(line)) {
+          currentSection.estAdopte = false;
         }
       }
     }
@@ -93,87 +107,67 @@ function extractSections(text: string): Section[] {
   return sections;
 }
 
-// Fonction pour identifier les sections pertinentes
-function identifyRelevantSections(sections: Section[]): Section[] {
-  return sections.filter(section => {
+// Fonction pour identifier les sections de budget
+function identifyBudgetSection(sections: Section[]): Section | null {
+  for (const section of sections) {
     const fullText = [section.titre, ...section.contenu].join(' ').toLowerCase();
-    return CONFIG.budgetKeywords.some(keyword => 
-      fullText.includes(keyword.toLowerCase())
+    
+    // Vérifier si c'est une section de budget
+    const isBudgetSection = CONFIG.budgetKeywords.some(keyword => 
+      fullText.toLowerCase().includes(keyword.toLowerCase())
     );
-  });
+
+    if (isBudgetSection && section.montants.length > 0) {
+      return section;
+    }
+  }
+  return null;
 }
 
-async function analyzePDFWithMistral(pdfPath: string) {
+async function analyzePDF(pdfPath: string) {
   try {
-    // Déplacer l'import ici pour éviter l'initialisation au démarrage
-    const pdfParse = require('pdf-parse');
-    
-    // Lire le fichier PDF
     const dataBuffer = await readFile(pdfPath);
-    const pdfData = await pdfParse(dataBuffer);
+    const data = await pdf(dataBuffer);
+    
+    const fullText = data.text;
+    console.log('PDF Text Content:', fullText.substring(0, 500)); // Log first 500 chars
     
     // Extraire et analyser les sections
-    const sections = extractSections(pdfData.text);
-    const relevantSections = identifyRelevantSections(sections);
+    const sections = extractSections(fullText);
+    console.log('Extracted Sections:', JSON.stringify(sections, null, 2));
     
-    // Préparer le résumé pour Mistral
-    const summary = relevantSections
-      .filter(section => section.montants.length > 0)
-      .map(section => `
-        Résolution ${section.numero}:
-        Titre: ${section.titre}
-        Montants mentionnés: ${section.montants.join(', ')}
-        ${section.votes.length > 0 ? 'Votes: ' + section.votes.join(', ') : ''}
-      `).join('\n');
-
-    // Prompt pour l'analyse
-    const prompt = `Analyse ce résumé de procès verbal d'assemblée générale de copropriété et extrait les informations suivantes :
-    - Le montant du budget voté
-    - L'année concernée par ce budget
-    - Le résultat du vote (nombre de voix)
-    - Le numéro de la résolution concernée
+    const budgetSection = identifyBudgetSection(sections);
+    console.log('Budget Section Found:', budgetSection ? JSON.stringify(budgetSection, null, 2) : 'Not found');
     
-    Format de réponse souhaité :
-    {
-      "montant": "XXX €",
-      "annee": "YYYY",
-      "resultatVote": "XX voix",
-      "numeroClause": "Résolution n°X"
-    }
-    
-    Contenu à analyser:
-    ${summary}`;
-
-    // Appeler l'API Mistral avec la nouvelle syntaxe
-    const response = await client.chat.complete({
-      model: "mistral-medium",
-      messages: [
-        {
-          role: "user",
-          content: prompt
-        }
-      ]
-    });
-
-    // Parser la réponse
-    const messageContent = response.choices?.[0]?.message?.content;
-    const analysisText = typeof messageContent === 'string' ? messageContent : '';
-    console.log('Raw analysis:', analysisText);
-    
-    try {
-      if (!analysisText) {
-        throw new Error('No response content');
-      }
-      return JSON.parse(analysisText);
-    } catch (parseError) {
-      console.error('Failed to parse JSON response:', parseError);
+    if (!budgetSection) {
       return {
-        montant: "Non trouvé",
-        annee: "Non trouvé",
-        resultatVote: "Non trouvé",
-        numeroClause: "Non trouvé"
+        montant: 'Non trouvé',
+        annee: 'Non trouvé',
+        resultatVote: 'Non trouvé',
+        numeroClause: 'Non trouvé',
+        estAdopte: false
       };
     }
+
+    // Trouver le montant avec le format TTC
+    const montantMatch = budgetSection.contenu.join(' ').match(/montant de ([\d\s]*[.,]\d{2})\s*€\s*TTC/i);
+    const montant = montantMatch ? montantMatch[1].replace(/\s/g, '') : null;
+
+    // Trouver l'année dans la période d'exercice
+    const exerciceMatch = budgetSection.contenu.join(' ').match(CONFIG.patterns.exercice);
+    const annee = exerciceMatch ? exerciceMatch[1].split('/')[2] : budgetSection.annee;
+
+    // Extraire le résultat du vote
+    const voteText = budgetSection.contenu.find(line => line.includes('POUR'));
+    const voteMatch = voteText ? voteText.match(/(\d+)\s*\/\s*(\d+)\s*cp/) : null;
+    
+    return {
+      montant: montant ? `${montant} €` : 'Non trouvé',
+      annee: annee || 'Non trouvé',
+      resultatVote: voteMatch ? `${voteMatch[1]}/${voteMatch[2]} cp` : 'Non trouvé',
+      numeroClause: `Résolution n°${budgetSection.numero}`,
+      estAdopte: budgetSection.estAdopte
+    };
   } catch (error) {
     console.error('Error analyzing PDF:', error);
     throw error;
@@ -192,18 +186,29 @@ export async function GET() {
       );
     }
 
-    const pdfPath = join(uploadDir, files[0]);
+    // Get the most recent file
+    const mostRecentFile = files.reduce((latest, current) => {
+      const latestStats = fs.statSync(join(uploadDir, latest));
+      const currentStats = fs.statSync(join(uploadDir, current));
+      return currentStats.mtime > latestStats.mtime ? current : latest;
+    }, files[0]);
+
+    const pdfPath = join(uploadDir, mostRecentFile);
     console.log('Analyzing file:', pdfPath);
     
-    const analysis = await analyzePDFWithMistral(pdfPath);
-    console.log('Analysis results:', analysis);
+    // Clean up old files
+    for (const file of files) {
+      if (file !== mostRecentFile) {
+        fs.unlinkSync(join(uploadDir, file));
+      }
+    }
 
-    return NextResponse.json({ budget: analysis });
-
+    const analysis = await analyzePDF(pdfPath);
+    return NextResponse.json(analysis);
   } catch (error) {
-    console.error('Analysis error:', error);
+    console.error('Error in GET handler:', error);
     return NextResponse.json(
-      { error: 'Erreur lors de l\'analyse du document: ' + (error as Error).message },
+      { error: 'Erreur lors de l\'analyse du PDF' },
       { status: 500 }
     );
   }
